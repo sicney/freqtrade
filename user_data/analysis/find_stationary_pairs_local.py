@@ -9,20 +9,24 @@ from tqdm import tqdm
 
 DATA_DIR = "user_data/data/binance"
 TIMEFRAMES = ["5m", "15m", "1h"]
-MIN_LEN = 800  # Min. Kerzenanzahl für Paar-Analyse (anpassen je nach Historie)
+MIN_LEN = 800  # Min. Kerzenanzahl für Paar-Analyse
 
 def load_prices(symbol, timeframe):
-    fpath = os.path.join(DATA_DIR, f"{symbol}_{timeframe}.feather")
+    fpath = os.path.join(DATA_DIR, f"{symbol}_{timeframe}.csv")
     if os.path.exists(fpath):
-        df = pd.read_feather(fpath)
-        df = df.set_index("date")
+        df = pd.read_csv(fpath)
+        # Prüfe auf gängige Spaltennamen
+        if "date" in df.columns:
+            df = df.set_index("date")
+        elif "timestamp" in df.columns:
+            df = df.set_index("timestamp")
         return df["close"]
     else:
         return None
 
 def all_symbols(timeframe):
-    files = glob.glob(os.path.join(DATA_DIR, f"*_{timeframe}.feather"))
-    return [os.path.basename(f).replace(f"_{timeframe}.feather", "") for f in files]
+    files = glob.glob(os.path.join(DATA_DIR, f"*_{timeframe}.csv"))
+    return [os.path.basename(f).replace(f"_{timeframe}.csv", "") for f in files]
 
 def test_stationarity(s1, s2):
     if len(s1) != len(s2) or len(s1) < MIN_LEN:
@@ -38,7 +42,6 @@ def test_stationarity(s1, s2):
 for timeframe in TIMEFRAMES:
     print(f"\n=== Suche stationäre Paare im {timeframe} ===")
     symbols = all_symbols(timeframe)
-    # Typische Filter, z.B. USDT-, ETH-, BTC-Paare
     usdt = [s for s in symbols if s.endswith("USDT")]
     btc  = [s for s in symbols if s.endswith("BTC")]
     eth  = [s for s in symbols if s.endswith("ETH")]
@@ -52,7 +55,6 @@ for timeframe in TIMEFRAMES:
             if s1 == s2: continue
             price2 = load_prices(s2, timeframe)
             if price2 is None: continue
-            # Kürze auf gleiche Länge
             l = min(len(price1), len(price2))
             s1p = price1[-l:].reset_index(drop=True)
             s2p = price2[-l:].reset_index(drop=True)
@@ -69,12 +71,12 @@ for timeframe in TIMEFRAMES:
                     "n": l
                 })
 
-    df = pd.DataFrame(results).sort_values("pvalue")
+    df = pd.DataFrame(results)
     fname = f"stationary_pairs_{timeframe}_local.csv"
-    if not df.empty:
+    if not df.empty and "pvalue" in df.columns:
+        df = df.sort_values("pvalue")
         df.to_csv(fname, index=False)
         print(f"{len(df)} stationäre Paare gefunden. Ergebnis gespeichert in {fname}.")
         print(df.head(10))
     else:
         print("Keine stationären Paare gefunden.")
-
